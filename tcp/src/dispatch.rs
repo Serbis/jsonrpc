@@ -84,23 +84,18 @@ impl<S: Stream<Item = String, Error = std::io::Error>> Stream for PeerMessageQue
 
 	fn poll(&mut self) -> Poll<Option<String>, std::io::Error> {
 		// check if we have response pending
-		match self.up.poll() {
-			Ok(Async::Ready(Some(val))) => {
-				return Ok(Async::Ready(Some(val)));
-			}
-			Ok(Async::Ready(None)) => {
-				// this will ensure that this polling will end when incoming i/o stream ends
-				return Ok(Async::Ready(None));
-			}
-			_ => {}
-		}
 
-		match self.receiver.poll() {
-			Ok(result) => Ok(result),
-			Err(send_err) => {
+		match (self.up.poll(), self.receiver.poll()) {
+			(Ok(Async::Ready(Some(v))), _) => Ok(Async::Ready(Some(v))),
+			(_, Ok(Async::Ready(Some(v)))) => Ok(Async::Ready(Some(v))),
+			(Ok(Async::Ready(None)), _) => Ok(Async::Ready(None)),
+			(_, Ok(Async::Ready(None))) => Ok(Async::Ready(None)),
+			(Ok(Async::NotReady), _) => Ok(Async::NotReady),
+			(_, Ok(Async::NotReady)) => Ok(Async::NotReady),
+			(Err(err), Err(send_err)) => {
 				// not sure if it can ever happen
 				warn!("MPSC send error: {:?}", send_err);
-				Err(std::io::Error::from(std::io::ErrorKind::Other))
+				Err(err)
 			}
 		}
 	}
